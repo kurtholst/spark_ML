@@ -22,15 +22,10 @@
 
 rm(list=ls())
 
-# Install packages if needed.
+# Load and Install packages if needed.
 if (!require('mlbench')) install.packages('mlbench'); 
 if (!require('caTools')) install.packages('caTools'); 
 if (!require('SparkR')) install.packages('SparkR'); 
-
-# Load libraries
-library(mlbench)
-library(SparkR)
-library(caTools)
 
 # Spark connection
 #SparkConnection <- sparkR.session() # initiate Spark contex
@@ -43,44 +38,48 @@ data("PimaIndiansDiabetes")
 diabetes <- PimaIndiansDiabetes
 
 # Save data to Spark
-Spark_df <- createDataFrame(x = diabetes, schema = NULL)  # In Spark 1.6 and earlier, use `sqlContext` instead of `spark`
-str(Spark_df)
+Path <- "/home/kurho@dmpmst.onmicrosoft.com/R/spark_ML/data"
 
-# Split data
-df_list <- randomSplit(x = Spark_df, weights = c(0.8, 0.2), seed = 12345)
-str(df_list[1])
-train <- df_list[1]
-# TO-DO proper split
+Spark_train <- createDataFrame(x = diabetes[0:700,], schema = NULL)  # In Spark 1.6 and earlier, use `sqlContext` instead of `spark`
+Spark_test  <- createDataFrame(x = diabetes[701:768,], schema = NULL)  
+write.df(Spark_train, path = Path, source = NULL, mode = "overwrite")
+write.df(Spark_test, path = Path, source = NULL, mode = "overwrite")
 
-features <- as.data.frame(c("pregnant", "glucose", "pressure", "triceps", "insulin","mass", "pedigree", "age"))
-Spark_features <- createDataFrame(x = features, schema = NULL)  # In Spark 1.6 and earlier, use `sqlContext` instead of `spark`
+# Explore data
+printSchema(Spark_train)
 
-# Train model.
+# Create a df consisting of only the 'age' column using a Spark SQL query
+age <- sql("SELECT age FROM Spark_train")
+
+str(Spark_train)
+str(Spark_test)
+
+################
+# Train model. #
 # Fit a random forest classification model with spark.randomForest
-model <- spark.randomForest(data = Spark_df, 
-                            formula = diabetes ~ pregnant + glucose + pressure + triceps + insulin + mass + pedigree + age ,  
+model <- spark.randomForest(data = Spark_train, 
+                            formula = diabetes ~ pregnant + glucose + pressure + 
+                              triceps + insulin + mass + pedigree + age ,  
                             type = "classification", 
-                            numTrees = 10)
-
+                            numTrees = 500)
 # Model summary
 summary(model)
 
-# Prediction
-predictions <- predict(model, Spark_df)
+# Prediction on test data
+predictions <- predict(model, Spark_test)
 head(predictions)
 
-predictions <- predict(model, Spark_df)
-
-
 # save the model
-getwd()
 #path <- "path/to/model"
-path <- "/home/kurho@dmpmst.onmicrosoft.com/R/spark_ML"
+Path <- "/home/kurho@dmpmst.onmicrosoft.com/R/spark_ML/models"
 #write.ml(model, path)
-write.ml(object = model, path = path)
-
+write.ml(object = model, path = Path)
+write.overwrite().save(
+  rf_model.write().overwrite().save(rf_model_path)
+  
+  
 # Load model
-savedModel <- read.ml(path)
+savedModel <- read.ml(path = Path)
 summary(savedModel)
 
 # Apply the saved model to 
@@ -90,3 +89,7 @@ predictions_new <- predict(object = savedModel, Spark_df)
 predictions_local <- collect(predictions_new)
 
 head(predictions_local)
+
+
+
+######################## 
